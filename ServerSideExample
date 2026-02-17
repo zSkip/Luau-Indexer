@@ -1,0 +1,22 @@
+
+local Indexer = require(game.ReplicatedStorage.Indexer)
+
+Indexer.New('Testing'):Connect(function(Data:Indexer.IndexerRecieveParam)
+	
+	print(`Data was sent from Client to Server via indexer : {Data}`)
+	
+end)
+
+game.Players.PlayerAdded:Connect(function(Player)
+	
+	Indexer.Fire({
+
+		Indentifier = "Init" ;
+
+		Players = {Player} ;
+		
+		Data = Indexer.Created ;
+
+	})
+	
+end)
