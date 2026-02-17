@@ -1,0 +1,235 @@
+
+local RunServ = game:GetService('RunService')
+local Http = game:GetService('HttpService')
+
+local REMOTE_EVENT = script.RemoteEvent
+
+
+local Class = {}
+local ClassMeta = {__index=Class}
+
+export type NewIndex = {
+	
+	RemoteIdentifier : string ; 
+	
+	Guid : GuidRegistryService ;
+	
+}
+
+export type IndexerRecieveParam = {
+	
+	RemoteIdentifier : GuidRegistryService|string ;
+	
+	Data : {any|Player} ;
+	
+}
+
+export type IndexerPassParam = {
+	
+	RemoteIdentifier : GuidRegistryService|string ;
+	
+}
+
+export type IndexerFireParam = {
+	
+	RemoteIdentifier : GuidRegistryService|string ;
+	
+	Players : {Player} | nil ;
+	
+	Data : {any} ;
+	
+}
+
+local Indexer = {}
+
+Indexer.Created = {
+	
+	Reverse = {}
+	
+}
+
+local function SendTable(Param:IndexerRecieveParam)
+
+	local SendTable = {}
+	SendTable.RemoteIdentifier = Param.RemoteIdentifier
+
+	for i,v in Param.Data do
+
+		SendTable[i] = v
+
+	end
+	
+	return SendTable
+	
+end
+
+local function CreatedCheck(Param:IndexerRecieveParam)
+	
+	local SendTable = SendTable(Param)
+	
+	if Indexer.Created[Param.RemoteIdentifier] then
+		
+		Indexer.Created[Param.RemoteIdentifier].Func(SendTable::IndexerPassParam) 
+			
+	elseif Indexer.Created.Reverse[Param.RemoteIdentifier] then
+			
+		Indexer.Created[Indexer.Created.Reverse[Param.RemoteIdentifier]].Func(SendTable::IndexerPassParam) 
+			
+	end
+	
+end
+
+function Indexer.New(RemoteIdentifier:string) 
+	
+	if not RemoteIdentifier then
+	
+	error('Remote Identifier nil')
+	
+end
+
+if type(RemoteIdentifier) ~= 'string' then
+	
+	error(`Type not string, got type : {type(RemoteIdentifier)}`)
+	
+end
+
+local Guid = Http:GenerateGUID(false)
+
+local self = setmetatable({
+	
+	RemoteIdentifier = RemoteIdentifier ;
+	
+	Guid = Guid ;
+	
+	Func = false
+ 
+},ClassMeta)
+
+Indexer.Created[RemoteIdentifier] = self
+Indexer.Created.Reverse[Guid] = RemoteIdentifier
+
+return self
+
+end
+
+function Class:Connect(Data)
+	
+	if not Data then
+		
+		error('Function Assigned is Nil')
+		
+	end
+	
+	if type(Data) ~= 'function' then
+		
+		error(`Param Incorrect Expected userdata, Got : {type(Data)}`)
+		
+	end	
+	
+	if self.Func then
+
+		return error('Function Already Assigned')
+
+	end	
+	
+	self.Func = function(DataParam:IndexerRecieveParam)
+		
+		if DataParam then
+			
+			if Indexer.Created[DataParam.RemoteIdentifier] then
+				
+				-- add way to add a conditional here 
+				
+				Data(DataParam)
+				
+			end
+			
+		else
+			
+			error(`Invalid Remote | {self.RemoteIdentifier} | {Data.Player} | {Data.RemoteIdentifier}`)
+			
+		end
+		
+	end
+
+end
+
+function Indexer.Fire(SendData:IndexerFireParam)
+	
+	if not SendData then
+		
+		error('No Fire Data')
+		
+	end
+	
+	local MultiplePlayers = false
+
+	if SendData.Players and #SendData.Players>1 then
+		
+		MultiplePlayers = true
+		
+	end
+	
+	if RunServ:IsServer() then
+		
+		if MultiplePlayers then
+			
+			for _,Player in SendData.Players  do
+				
+				if Player:IsA('Player') then
+					
+					REMOTE_EVENT:FireClient(Player,{
+
+						RemoteIdentifier = SendData.RemoteIdentifier ; 
+
+						Data = SendData.Data ;
+
+					}::IndexerRecieveParam)
+					
+				end
+		
+			end
+			
+		else
+	
+			REMOTE_EVENT:FireClient(SendData.Players[1],{
+				
+				RemoteIdentifier = SendData.RemoteIdentifier ; 
+
+				Data = SendData.Data ;
+					
+			}::IndexerRecieveParam)
+			
+		end
+
+	elseif RunServ:IsClient() then
+		
+		REMOTE_EVENT:FireServer({
+			
+			RemoteIdentifier = SendData.RemoteIdentifier ;
+			
+			Data = SendData.Data
+			
+		}::IndexerRecieveParam)
+		
+	end
+	
+end
+
+if RunServ:IsServer() then
+	
+	REMOTE_EVENT.OnServerEvent:Connect(function(Player,Param:IndexerRecieveParam)
+		
+		Param.Data.Player = Player
+		
+		CreatedCheck(Param)
+		
+	end)
+
+elseif RunServ:IsClient() then
+	
+	REMOTE_EVENT.OnClientEvent:Connect(CreatedCheck)
+
+end
+
+return Indexer
