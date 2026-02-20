@@ -1,0 +1,111 @@
+
+local RunServ = game:GetService('RunService')
+
+local Class = {}
+local ClassMeta = {__index=Class}
+
+export type IndexerConstructor = {
+	
+	Remote : RemoteEvent ;
+	
+	Identifier : string
+	
+}
+
+export type Indexer = {
+
+	Remote : RemoteEvent ;
+
+	Identifier : string ;
+
+	FunctionArray : { (any) -> () }
+
+}
+
+local Indexer = {
+	
+	Repository = {} ; -- object storage
+	
+	Connections = {} ; -- remote event script connection storage
+	
+}
+
+function Indexer.New(DataParam:IndexerConstructor) -- contstructor 
+	
+	assert(type(DataParam.Identifier) == "string","Provide A String Identifier")
+	assert(type(DataParam.Remote) == "userdata" and DataParam.Remote:IsA('RemoteEvent'),"Provide A Remote Event")
+	assert(Indexer.Repository[DataParam.Identifier] == nil,"Identifier In Use")
+	
+	local self = setmetatable({
+		
+		Identifier = DataParam.Identifier ; -- string name that will be used
+		
+		Remote = DataParam.Remote ; -- remote event
+		
+		FunctionArray = {} -- function storage
+		
+	},ClassMeta)
+	
+	Indexer.Repository[self.Identifier] = self
+	
+	return self
+	
+end
+
+function Class:Connect(PassedFunc)
+	assert(type(PassedFunc) == "function", "Provide A Function")
+	
+	local self:Indexer = self
+	
+	table.insert(self.FunctionArray,PassedFunc)
+	
+end
+
+function Class:Recursive(DataParam)
+	
+	local self:Indexer = self
+	
+	if RunServ:IsServer() then
+		
+		self.Remote:FireClient()
+		
+	elseif RunServ:IsClient() then
+		print('e')
+		self.Remote:FireServer(DataParam)
+		
+	end
+	
+end
+
+if RunServ:IsServer() then
+	
+	task.spawn(function()
+		
+		task.wait()
+		
+		for Identifier , Object:Indexer in Indexer.Repository  do
+			
+			if table.find(Indexer.Connections,Object.Remote) then 
+				-- need to figure out how to tell if the remote event is connected or not, only want/need 1 connection
+				continue
+				
+			else
+				
+				Indexer.Connections[Object.Identifier] = Object.Remote.OnServerEvent:Connect(function(PassedData)
+
+					print('server event')
+
+				end)
+				
+			end
+
+		end
+		
+	end)
+	
+elseif RunServ:IsClient() then
+	
+end
+
+
+return Indexer
