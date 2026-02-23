@@ -1,6 +1,17 @@
 
 local RunServ = game:GetService('RunService')
 
+local function DeepCopy(original)
+	local copy = {}
+	for k, v in original do
+		if typeof(v) == "table" then
+			v = DeepCopy(v)
+		end
+		copy[k] = v
+	end
+	return copy
+end   
+
 local Class = {}
 local ClassMeta = {__index=Class}
 
@@ -9,6 +20,14 @@ export type IndexerConstructor = {
 	Remote : RemoteEvent ;
 	
 	Identifier : string
+	
+}
+
+export type Connection = {
+	
+	ConnectedIdentifiers : {string} ;
+	
+	IdentifierConnection : RBXScriptConnection ;
 	
 }
 
@@ -22,6 +41,14 @@ export type Indexer = {
 
 }
 
+export type RecursiveType = {
+	
+	ClientsTo : {Player} ;
+	
+	PassedData : {any} ;
+	
+}
+
 local Indexer = {
 	
 	Repository = {} ; -- object storage
@@ -29,6 +56,22 @@ local Indexer = {
 	Connections = {} ; -- remote event script connection storage
 	
 }
+
+--[[[
+
+To Do
+
+Add function functionality 
+
+add function order
+
+add comments 
+
+rinse repeat
+
+
+]]
+
 
 function Indexer.New(DataParam:IndexerConstructor) -- contstructor 
 	
@@ -52,26 +95,71 @@ function Indexer.New(DataParam:IndexerConstructor) -- contstructor
 	
 end
 
-function Class:Connect(PassedFunc)
+function Class:Connect(PassedFunc,Order)
+	
 	assert(type(PassedFunc) == "function", "Provide A Function")
 	
+	if Order then
+		
+		assert(type(Order) == "number", "Order Must Be An Int")
+		
+	end
+
 	local self:Indexer = self
 	
-	table.insert(self.FunctionArray,PassedFunc)
+	if Order then
+		
+		table.insert(self.FunctionArray,Order,PassedFunc)
+		
+	else
+		
+		table.insert(self.FunctionArray,PassedFunc)
+		
+	end
 	
 end
 
-function Class:Recursive(DataParam)
+function Class:Recursive(PassedParam:RecursiveType)
 	
 	local self:Indexer = self
 	
+	assert(PassedParam::RecursiveType,"Incomplete PassedParam")
+	
+	assert(PassedParam.PassedData ~= nil and type(PassedParam) == "table" ,"PassedData Required")
+
 	if RunServ:IsServer() then
+	
+		assert(type(PassedParam.ClientsTo) == "table" and #PassedParam.ClientsTo >= 1,"Player Array With Player/s Expected")
 		
-		self.Remote:FireClient()
+		for Index, SupposedPlayer in PassedParam.ClientsTo do
+			
+			assert(typeof(SupposedPlayer) == "Instance" and SupposedPlayer:IsA("Player"), "Element Is Not A Player")
+			
+		end
+		
+		local SendTable = DeepCopy(PassedParam.PassedData)
+		
+		if #PassedParam.ClientsTo > 1 then
+			
+			for Index, Player in PassedParam.ClientsTo do
+				
+				self.Remote:FireClient(Player,SendTable)
+				
+			end
+			
+		else
+			
+			self.Remote:FireClient(PassedParam.ClientsTo[1],SendTable)
+			
+		end
 		
 	elseif RunServ:IsClient() then
-		print('e')
-		self.Remote:FireServer(DataParam)
+		
+		assert(PassedParam.ClientsTo == nil,"Players Param Not Needed On Client")
+		
+		local SendTable = DeepCopy(PassedParam.PassedData)
+			
+		self.Remote:FireServer(SendTable)
 		
 	end
 	
@@ -81,29 +169,70 @@ if RunServ:IsServer() then
 	
 	task.spawn(function()
 		
-		task.wait()
+		task.wait() -- wait for the next frame so we're passed script read
 		
 		for Identifier , Object:Indexer in Indexer.Repository  do
 			
-			if table.find(Indexer.Connections,Object.Remote) then 
-				-- need to figure out how to tell if the remote event is connected or not, only want/need 1 connection
-				continue
+			if not Indexer.Connections[Object.Remote] then
 				
-			else
+				Indexer.Connections[Object.Remote] = {
+					
+					ConnectedIdentifiers = {} ;
+					
+					Connection = Object.Remote.OnServerEvent:Connect(function(SendingPlayer,PassedData)
+						print(PassedData)
+						print(`Client To Server : {SendingPlayer} : {PassedData}`)
+						
+					end)
+					
+				}
 				
-				Indexer.Connections[Object.Identifier] = Object.Remote.OnServerEvent:Connect(function(PassedData)
-
-					print('server event')
-
-				end)
+				table.insert(Indexer.Connections[Object.Remote].ConnectedIdentifiers,Object.Identifier)
+				
+			elseif Indexer.Connections[Object.Remote] then
+				
+				table.insert(Indexer.Connections[Object.Remote].ConnectedIdentifiers,Object.Identifier)
 				
 			end
-
+			
 		end
 		
 	end)
 	
 elseif RunServ:IsClient() then
+	
+	task.spawn(function()
+
+		task.wait() -- wait for the next frame so we're passed script read
+
+		for Identifier , Object:Indexer in Indexer.Repository  do
+
+			if not Indexer.Connections[Object.Remote] then
+
+				Indexer.Connections[Object.Remote] = {
+
+					ConnectedIdentifiers = {} ;
+
+					Connection = Object.Remote.OnClientEvent:Connect(function(PassedData)
+						
+						print(PassedData)
+						print(`Client To Server : {PassedData}`)
+
+					end)
+
+				}
+
+				table.insert(Indexer.Connections[Object.Remote].ConnectedIdentifiers,Object.Identifier)
+
+			elseif Indexer.Connections[Object.Remote] then
+
+				table.insert(Indexer.Connections[Object.Remote].ConnectedIdentifiers,Object.Identifier)
+
+			end
+
+		end
+
+	end)
 	
 end
 
