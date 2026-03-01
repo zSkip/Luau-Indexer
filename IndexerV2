@@ -82,21 +82,13 @@ export type IndexerConstructor = {
 	
 }
 
-export type Connection = {
-	
-	ConnectedIdentifiers : {string} ;
-	
-	IdentifierConnection : RBXScriptConnection ;
-	
-}
-
 export type Indexer = {
 
 	Remote : RemoteEvent ;
 
 	Identifier : string ;
 
-	FunctionArray : { (any) -> () }
+	FunctionArray : {} ;
 
 }
 
@@ -128,6 +120,7 @@ export type BackForth = {
 	
 }
 
+
 local Indexer = {
 	
 	Repository = {} ; -- object storage
@@ -135,6 +128,72 @@ local Indexer = {
 	Connections = {} ; -- remote event script connection storage
 	
 }
+
+
+local function RunTimeEvents(GetSignalType,DefineArgs) -- both params are created functions, GetSignalType returns the remote type giving the remote as a param
+	-- DefineArgs is given as ... taking advantage of the multi length we can pass back multiple things in the func return
+	
+	task.spawn(function()
+
+		task.wait() -- wait for the next frame so we're passed script read
+
+		for Identifier , Object:Indexer in Indexer.Repository  do
+
+			if not Indexer.Connections[Object.Remote] then
+
+				Indexer.Connections[Object.Remote] = {
+
+					ConnectedIdentifiers = {} ;
+
+					Connection = GetSignalType(Object.Remote):Connect(function(...)
+						
+						local IfSendPlayer, PassedData = DefineArgs(...)
+						
+						assert(type(PassedData) == "table" ,"PassedData Required")
+						assert(type(PassedData.Identifier) == "string","Provide A String Identifier")
+						assert(type(PassedData.PassedData) == "table" ,"PassedData Required")
+						
+						
+						if Indexer.Repository[PassedData.Identifier] and #Indexer.Repository[PassedData.Identifier].FunctionArray > 0 then
+						
+							if IfSendPlayer then
+								
+								for Index, ConnectedFunction in Indexer.Repository[PassedData.Identifier].FunctionArray do 
+
+									ConnectedFunction(IfSendPlayer,PassedData.PassedData)
+
+								end
+								
+							else
+								
+								for Index, ConnectedFunction in Indexer.Repository[PassedData.Identifier].FunctionArray do 
+
+									ConnectedFunction(PassedData.PassedData)
+
+								end
+								
+							end
+
+						end
+
+					end) ;
+
+				}
+
+				table.insert(Indexer.Connections[Object.Remote].ConnectedIdentifiers,Object.Identifier)
+
+			elseif Indexer.Connections[Object.Remote] then
+
+				table.insert(Indexer.Connections[Object.Remote].ConnectedIdentifiers,Object.Identifier)
+
+			end
+
+		end
+
+	end)
+	
+end
+
 
 --[[[
 
@@ -178,17 +237,13 @@ end
 
 function Class:Connect(PassedFunc,Order) -- method of object
 	
+	local self:Indexer = self
+	
 	assert(type(PassedFunc) == "function", "Provide A Function")
 	
 	if Order then
 		
 		assert(type(Order) == "number", "Order Must Be An Int")
-		
-	end
-
-	local self:Indexer = self
-	
-	if Order then
 		
 		table.insert(self.FunctionArray,Order,PassedFunc) -- add it to object's function array at the position 
 		
@@ -203,9 +258,7 @@ end
 function Class:Recursive(PassedParam:RecursiveType) -- since each object only has one identifier fires the object's identifer as a param hoping to meet a object with the same identifer on the other replication side
 	
 	local self:Indexer = self
-	
-	assert(PassedParam::RecursiveType,"Incomplete PassedParam")
-	
+
 	assert(PassedParam.PassedData ~= nil and type(PassedParam.PassedData) == "table" ,"PassedData Required")
 
 	if RunServ:IsServer() then
@@ -214,36 +267,21 @@ function Class:Recursive(PassedParam:RecursiveType) -- since each object only ha
 		
 		for Index, SupposedPlayer in PassedParam.ClientsTo do
 			
-			assert(typeof(SupposedPlayer) == "Instance" and SupposedPlayer:IsA("Player"), "Element Is Not A Player")
+			assert(typeof(SupposedPlayer) == "Instance" and SupposedPlayer:IsA("Player"), "Element Is Not A Player") -- precheck to confirm ClientsTo is correct
 			
 		end
-		
-		if #PassedParam.ClientsTo > 1 then
 			
-			for Index, Player in PassedParam.ClientsTo do
+		for Index, Player in PassedParam.ClientsTo do
 				
-				self.Remote:FireClient(Player,{
+			self.Remote:FireClient(Player,{
 
-					Identifier  = self.Identifier ;
-
-					PassedData = PassedParam.PassedData
-
-
-				})
-				
-			end
-			
-		else
-			
-			self.Remote:FireClient(PassedParam.ClientsTo[1],{
-				
 				Identifier  = self.Identifier ;
-				
+
 				PassedData = PassedParam.PassedData
-				
+
 
 			})
-			
+				
 		end
 		
 	elseif RunServ:IsClient() then
@@ -265,13 +303,13 @@ end
 
 function Indexer.Fire(PassedParam:FireType)  -- differs from the recursive function as that doesnt take an indentifer and is meant to go by that classes identifier as this can do any identifer
 
-	assert(PassedParam::FireType,"Incomplete PassedParam")
-
 	assert(type(PassedParam.Remote) == "userdata" and PassedParam.Remote:IsA('RemoteEvent'), "RemoteEvent Required")
 
 	assert(PassedParam.PassedData ~= nil and type(PassedParam.PassedData) == "table" ,"PassedData Required")
 	
 	assert(PassedParam.Identifier ~=nil,"Identifer Required")
+	
+	PassedParam.Identifier = string.lower(PassedParam.Identifier)
 
 	if RunServ:IsServer() then
 
@@ -283,23 +321,9 @@ function Indexer.Fire(PassedParam:FireType)  -- differs from the recursive funct
 
 		end
 
-		if #PassedParam.ClientsTo > 1 then
+		for Index, Player in PassedParam.ClientsTo do
 
-			for Index, Player in PassedParam.ClientsTo do
-
-				PassedParam.Remote:FireClient(Player,{
-
-					Identifier  = PassedParam.Identifier ;
-
-					PassedData = PassedParam.PassedData
-
-				})
-
-			end
-
-		else
-
-			PassedParam.Remote:FireClient(PassedParam.ClientsTo[1],{
+			PassedParam.Remote:FireClient(Player,{
 
 				Identifier  = PassedParam.Identifier ;
 
@@ -325,100 +349,29 @@ function Indexer.Fire(PassedParam:FireType)  -- differs from the recursive funct
 	
 end
 
--- maybe should turn this into a function \/ \/
 
 if RunServ:IsServer() then -- done on runtime when module is read
 	
-	task.spawn(function() -- since all added module data is also added when read we have to wait for the next frame to guarantee its been read
+	RunTimeEvents(
+
+		function(Remote) return Remote.OnServerEvent end ,
 		
-		task.wait() -- wait for the next frame so we're passed script read
+		function(SendingPlayer,PassedData) return SendingPlayer , PassedData  end	
 		
-		for Identifier , Object:Indexer in Indexer.Repository  do
-			
-			if not Indexer.Connections[Object.Remote] then -- if remote event does have a connect
-				
-				Indexer.Connections[Object.Remote] = {
-					
-					ConnectedIdentifiers = {} ;
-					
-					Connection = Object.Remote.OnServerEvent:Connect(function(SendingPlayer,PassedData:BackForth)
-						
-						if Indexer.Repository[PassedData.Identifier] then -- if object 
-							
-							if #Indexer.Repository[PassedData.Identifier].FunctionArray > 0 then -- if it has atleast a function in the function array
-								
-								for Index, ConnectedFunction in Indexer.Repository[PassedData.Identifier].FunctionArray do 
-									
-									ConnectedFunction(SendingPlayer,PassedData.PassedData)
-									
-								end
-									
-							end
-							
-						end
-						
-					end) ;
-					
-				}
-				
-				table.insert(Indexer.Connections[Object.Remote].ConnectedIdentifiers,Object.Identifier) -- add to connections to make the check above true // prevents a single remote event having more than 1 script connection
-				
-			elseif Indexer.Connections[Object.Remote] then
-				
-				table.insert(Indexer.Connections[Object.Remote].ConnectedIdentifiers,Object.Identifier) -- else add thee identifer under the connect
-				
-			end
-			
-		end
-		
-	end)
+	)
 	
 elseif RunServ:IsClient() then
 	
-	task.spawn(function()
+	RunTimeEvents(
+		
+		function(Remote) return Remote.OnClientEvent end ,
 
-		task.wait() -- wait for the next frame so we're passed script read
+		function(PassedData) return nil , PassedData  end	
 
-		for Identifier , Object:Indexer in Indexer.Repository  do
-
-			if not Indexer.Connections[Object.Remote] then
-
-				Indexer.Connections[Object.Remote] = {
-
-					ConnectedIdentifiers = {} ;
-
-					Connection = Object.Remote.OnClientEvent:Connect(function(PassedData:BackForth)
-
-						if Indexer.Repository[PassedData.Identifier] then
-
-							if #Indexer.Repository[PassedData.Identifier].FunctionArray > 0 then
-
-								for Index, ConnectedFunction in Indexer.Repository[PassedData.Identifier].FunctionArray do 
-
-									ConnectedFunction(PassedData.PassedData)
-
-								end
-
-							end
-
-						end
-
-					end) ;
-
-				}
-
-				table.insert(Indexer.Connections[Object.Remote].ConnectedIdentifiers,Object.Identifier)
-
-			elseif Indexer.Connections[Object.Remote] then
-
-				table.insert(Indexer.Connections[Object.Remote].ConnectedIdentifiers,Object.Identifier)
-
-			end
-
-		end
-
-	end)
+	)
 	
 end
+
+
 
 return Indexer
