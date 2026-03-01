@@ -259,7 +259,7 @@ function Class:Recursive(PassedParam:RecursiveType) -- since each object only ha
 	
 	local self:Indexer = self
 
-	assert(PassedParam.PassedData ~= nil and type(PassedParam.PassedData) == "table" ,"PassedData Required")
+	assert(type(PassedParam.PassedData) == "table" ,"PassedData Required")
 
 	if RunServ:IsServer() then
 	
@@ -303,11 +303,11 @@ end
 
 function Indexer.Fire(PassedParam:FireType)  -- differs from the recursive function as that doesnt take an indentifer and is meant to go by that classes identifier as this can do any identifer
 
-	assert(type(PassedParam.Remote) == "userdata" and PassedParam.Remote:IsA('RemoteEvent'), "RemoteEvent Required")
+	assert(typeof(PassedParam.Remote) == "Instance" and PassedParam.Remote:IsA('RemoteEvent'), "RemoteEvent Required")
 
-	assert(PassedParam.PassedData ~= nil and type(PassedParam.PassedData) == "table" ,"PassedData Required")
+	assert(type(PassedParam.PassedData) == "table" ,"PassedData Required")
 	
-	assert(PassedParam.Identifier ~=nil,"Identifer Required")
+	assert(type(PassedParam.Identifier) == "string","Identifer Required")
 	
 	PassedParam.Identifier = string.lower(PassedParam.Identifier)
 
