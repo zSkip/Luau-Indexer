@@ -33,12 +33,16 @@ assiocated bleh functions // requires both "Bleh" on the client and sever
 		ClientsTo = {Player/s} provide players in an array format 
 		
 		PassedData = {} // whatever data you want to pass along the wire 
+		
+		FunctionOrder = Number/Number Range // base number will play that number of function and the next function, NumberRange plays functions between their 2 array numbers ie if 5 functions and range is 2-4 will do function 2,3,4
 	
 	}
 
 	ClientParam : {
 	
 		PassedData = {} // whatever data you want to pass along the wire, notice it doesnt have the ClientsTo
+		
+		FunctionOrder = Number/Number Range // base number will play that number of function and the next function, NumberRange plays functions between their 2 array numbers ie if 5 functions and range is 2-4 will do function 2,3,4
 	
 	}
 	
@@ -53,6 +57,8 @@ Indexer.Fire() -> fires a identifer through a remote with passed data, if these 
 		ClientsTo = {Player/s} provide players in an array format 
 		
 		PassedData = {} // whatever data you want to pass along the wire 
+
+		FunctionOrder = Number/Number Range // base number will play that number of function and the next function, NumberRange plays functions between their 2 array numbers ie if 5 functions and range is 2-4 will do function 2,3,4
 	
 	}
 	
@@ -63,6 +69,8 @@ Indexer.Fire() -> fires a identifer through a remote with passed data, if these 
 		Identifer = string identifier of object
 		
 		PassedData = {} // whatever data you want to pass along the wire 
+		
+		FunctionOrder = Number/Number Range // base number will play that number of function and the next function, NumberRange plays functions between their 2 array numbers ie if 5 functions and range is 2-4 will do function 2,3,4
 	
 	}
 
@@ -98,6 +106,8 @@ export type RecursiveType = {
 	
 	PassedData : {any} ;
 	
+	FunctionOrder : number | {NumberRange} ; 
+	
 }
 
 export type FireType = {
@@ -108,7 +118,9 @@ export type FireType = {
 	
 	ClientsTo : {Player} ;
 	
-	PassedData : {any}
+	PassedData : {any} ;
+	
+	FunctionOrder : number | {NumberRange} ; 
 	
 }
 
@@ -153,8 +165,53 @@ local function RunTimeEvents(GetSignalType,DefineArgs) -- both params are create
 						assert(type(PassedData.Identifier) == "string","Provide A String Identifier")
 						assert(type(PassedData.PassedData) == "table" ,"PassedData Required")
 						
-						
-						if Indexer.Repository[PassedData.Identifier] and #Indexer.Repository[PassedData.Identifier].FunctionArray > 0 then
+						if PassedData.FunctionOrder and Indexer.Repository[PassedData.Identifier] and #Indexer.Repository[PassedData.Identifier].FunctionArray > 0  then
+							-- function order conditional 
+							assert(typeof(PassedData.FunctionOrder) == "NumberRange" or typeof(PassedData.FunctionOrder) == "number","Incorrect FunctionOrder Param's")
+							
+							if IfSendPlayer then
+								
+								if typeof(PassedData.FunctionOrder) == "NumberRange" then
+									
+									for i = PassedData.FunctionOrder.Min,PassedData.FunctionOrder.Max do
+										
+										Indexer.Repository[PassedData.Identifier].FunctionArray[i](IfSendPlayer,PassedData.PassedData)
+										
+									end
+									
+								else 
+									
+									for i = PassedData.FunctionOrder , #Indexer.Repository[PassedData.Identifier].FunctionArray do
+										
+										Indexer.Repository[PassedData.Identifier].FunctionArray[i](IfSendPlayer,PassedData.PassedData)
+										
+									end
+									
+								end
+								
+							else 
+								
+								if typeof(PassedData.FunctionOrder) == "NumberRange" then
+
+									for i = PassedData.FunctionOrder.Min,PassedData.FunctionOrder.Max do
+
+										Indexer.Repository[PassedData.Identifier].FunctionArray[i](PassedData.PassedData)
+
+									end
+
+								else 
+
+									for i = PassedData.FunctionOrder , #Indexer.Repository[PassedData.Identifier].FunctionArray do
+
+										Indexer.Repository[PassedData.Identifier].FunctionArray[i](PassedData.PassedData)
+
+									end
+
+								end
+								
+							end
+							
+						elseif Indexer.Repository[PassedData.Identifier] and #Indexer.Repository[PassedData.Identifier].FunctionArray > 0 then
 						
 							if IfSendPlayer then
 								
@@ -199,7 +256,7 @@ end
 
 To Do
 
-add function order// done now add core functions and or tiers of functions
+add function order// done now add core functions and or tiers of functions // as of 3-20 we have function order, function play order , just no core/locked/tiers functions
 
 add comments (working on it)
 
@@ -259,7 +316,7 @@ function Class:Recursive(PassedParam:RecursiveType) -- since each object only ha
 	
 	local self:Indexer = self
 
-	assert(type(PassedParam.PassedData) == "table" ,"PassedData Required")
+	assert(PassedParam.PassedData ~= nil and type(PassedParam.PassedData) == "table" ,"PassedData Required")
 
 	if RunServ:IsServer() then
 	
@@ -277,8 +334,9 @@ function Class:Recursive(PassedParam:RecursiveType) -- since each object only ha
 
 				Identifier  = self.Identifier ;
 
-				PassedData = PassedParam.PassedData
-
+				PassedData = PassedParam.PassedData ;
+				
+				FunctionOrder = PassedParam.FunctionOrder ;
 
 			})
 				
@@ -292,8 +350,9 @@ function Class:Recursive(PassedParam:RecursiveType) -- since each object only ha
 
 			Identifier  = self.Identifier ;
 
-			PassedData = PassedParam.PassedData
-
+			PassedData = PassedParam.PassedData ;
+			
+			FunctionOrder = PassedParam.FunctionOrder ;
 
 		})
 		
@@ -303,11 +362,11 @@ end
 
 function Indexer.Fire(PassedParam:FireType)  -- differs from the recursive function as that doesnt take an indentifer and is meant to go by that classes identifier as this can do any identifer
 
-	assert(typeof(PassedParam.Remote) == "Instance" and PassedParam.Remote:IsA('RemoteEvent'), "RemoteEvent Required")
+	assert(type(PassedParam.Remote) == "userdata" and PassedParam.Remote:IsA('RemoteEvent'), "RemoteEvent Required")
 
 	assert(type(PassedParam.PassedData) == "table" ,"PassedData Required")
 	
-	assert(type(PassedParam.Identifier) == "string","Identifer Required")
+	assert(type(PassedParam.Identifier) == "string","Identifier Required")
 	
 	PassedParam.Identifier = string.lower(PassedParam.Identifier)
 
@@ -327,7 +386,9 @@ function Indexer.Fire(PassedParam:FireType)  -- differs from the recursive funct
 
 				Identifier  = PassedParam.Identifier ;
 
-				PassedData = PassedParam.PassedData
+				PassedData = PassedParam.PassedData ;
+				
+				FunctionOrder = PassedParam.FunctionOrder ;
 
 			})
 
@@ -341,14 +402,15 @@ function Indexer.Fire(PassedParam:FireType)  -- differs from the recursive funct
 
 			Identifier  = PassedParam.Identifier ;
 
-			PassedData = PassedParam.PassedData
+			PassedData = PassedParam.PassedData ;
+			
+			FunctionOrder = PassedParam.FunctionOrder ;
 
 		})
 
 	end
 	
 end
-
 
 if RunServ:IsServer() then -- done on runtime when module is read
 	
